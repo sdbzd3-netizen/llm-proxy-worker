@@ -1,0 +1,55 @@
+name: Test Worker
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test health endpoint
+        run: |
+          echo "=== Health Check ==="
+          curl -s -H "X-API-Key: myproxy-clouflare-2026" \
+            https://api-proxy-hub.sdbzd3.workers.dev/health | python -m json.tool
+
+      - name: Test GitHub API
+        run: |
+          echo "=== GitHub API ==="
+          curl -s -H "X-API-Key: myproxy-clouflare-2026" \
+            https://api-proxy-hub.sdbzd3.workers.dev/github/repos/sdbzd/llm-proxy-worker | python -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          print(f'Repo: {d[\"full_name\"]} | Stars: {d.get(\"stargazers_count\",0)} | Forks: {d.get(\"forks_count\",0)}')
+          "
+
+      - name: Test Gemini API
+        run: |
+          echo "=== Gemini API ==="
+          curl -s -X POST -H "X-API-Key: myproxy-clouflare-2026" \
+            -H "Content-Type: application/json" \
+            -d '{"contents":[{"parts":[{"text":"say hello in 3 words"}]}]}' \
+            https://api-proxy-hub.sdbzd3.workers.dev/gemini/v1beta/models/gemini-2.0-flash:generateContent | python -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          if 'candidates' in d:
+              text = d['candidates'][0]['content']['parts'][0]['text']
+              print(f'✅ Gemini: {text}')
+          else:
+              print(f'Response: {json.dumps(d, indent=2)[:200]}')
+          "
+
+      - name: Test HuggingFace API
+        run: |
+          echo "=== HuggingFace API ==="
+          curl -s -H "X-API-Key: myproxy-clouflare-2026" \
+            https://api-proxy-hub.sdbzd3.workers.dev/hf/api/models?limit=3 | python -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          if isinstance(d, list):
+              print(f'✅ HF models: {len(d)} returned')
+              for m in d:
+                  print(f'  - {m.get(\"modelId\",\"?\")}')
+          else:
+              print(f'Response: {json.dumps(d, indent=2)[:200]}')
+          "

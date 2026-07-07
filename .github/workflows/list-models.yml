@@ -1,0 +1,70 @@
+name: List Available Models
+
+on:
+  workflow_dispatch:
+
+jobs:
+  list-models:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List Gemini models
+        run: |
+          echo "## Gemini 可用模型"
+          echo ""
+          curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=${{ secrets.GEMINI_API_KEY }}" | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          for m in d.get('models', []):
+              name = m['name'].replace('models/', '')
+              sup = m.get('supportedGenerationMethods', [])
+              desc = m.get('description','')[:80]
+              tags = ', '.join(sup[:3])
+              print(f'- **{name}**')
+              print(f'  - 方法: {tags}')
+              if desc: print(f'  - {desc}')
+          print(f'
+共 {len(d.get("models",[]))} 个模型')
+          "
+
+      - name: List GitHub Models
+        run: |
+          echo ""
+          echo "## GitHub Models (Azure AI)"
+          echo ""
+          curl -sL "https://aihubservices.githubusercontent.com/api/models?api-version=2024-10-01-preview" 2>&1 | python3 -c "
+          import json,sys
+          try:
+              d=json.load(sys.stdin)
+              models = d.get('value', d) if isinstance(d, dict) else d
+              if isinstance(models, list):
+                  seen = set()
+                  for m in models[:50]:
+                      name = m.get('name','?')
+                      provider = m.get('publisher','?')
+                      if name not in seen:
+                          seen.add(name)
+                          print(f'- **{name}** ({provider})')
+                  print(f'
+共 {len(seen)} 个模型')
+          except:
+              print(str(sys.stdin.read())[:200])
+          " 2>&1 || echo "(GitHub Models API 暂不可达, 查文档)"
+
+      - name: Test OpenAI-compatible Gemini via Worker
+        run: |
+          echo ""
+          echo "## 测试 OpenAI 兼容 API"
+          echo ""
+          curl -s -X POST             -H "Content-Type: application/json"             -H "X-API-Key: ${{ secrets.WORKER_SECRET }}"             -d '{
+              "model": "gemini-2.0-flash",
+              "messages": [{"role": "user", "content": "say hello in 3 words"}]
+            }'             https://api-proxy-hub.sdbzd3.workers.dev/gemini-oai/v1/chat/completions | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          if 'choices' in d:
+              print(f'✅ OpenAI 格式响应: {d["choices"][0]["message"]["content"]}')
+          elif 'error' in d:
+              print(f'❌ 错误: {d["error"]}')
+          else:
+              print(json.dumps(d, indent=2)[:300])
+          "
